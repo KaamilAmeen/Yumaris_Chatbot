@@ -35,16 +35,42 @@
                         </div>
                     </div>
                 </div>
-                <form id="message-form" class="d-flex">
-                    <input type="text" id="user-input" class="form-control me-2" placeholder="Type your message..." autocomplete="off">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-paper-plane"></i>
-                    </button>
+                <form id="message-form">
+                    <div class="input-group mb-2">
+                        <input type="text" id="user-input" class="form-control" placeholder="Type your message..." autocomplete="off">
+                        <button id="voice-input-btn" type="button" class="btn btn-outline-secondary" title="Voice input">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        <label for="file-upload" class="btn btn-outline-secondary" title="Attach file">
+                            <i class="fas fa-paperclip"></i>
+                        </label>
+                        <input id="file-upload" type="file" style="display: none" accept="image/*">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="small text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Suggested: "Show me headphones", "Order #o1 status", "Kitchen products"
+                        </div>
+                        <div id="voice-status" class="small text-danger d-none">
+                            <i class="fas fa-circle-notch fa-spin me-1"></i>
+                            Listening...
+                        </div>
+                        <div id="file-preview-container" class="d-none">
+                            <div class="d-flex align-items-center">
+                                <div class="small text-muted me-2">File ready to send</div>
+                                <button id="remove-file" class="btn btn-sm btn-outline-danger">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div id="image-preview" class="mt-1 d-none">
+                                <img src="" class="img-fluid rounded" style="max-height: 100px;" alt="Preview">
+                            </div>
+                        </div>
+                    </div>
                 </form>
-                <div class="mt-2 small text-muted">
-                    <i class="fas fa-info-circle me-1"></i>
-                    Suggested questions: "Show me some headphones", "What's the status of order #o1?", "Do you have any kitchen products?"
-                </div>
             </div>
         </div>
     </div>
