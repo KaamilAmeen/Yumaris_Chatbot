@@ -1,6 +1,7 @@
 """
 Models for the e-commerce chatbot application.
-These classes represent the data structure for products, orders, and user information.
+These classes represent the data structure for products, orders, user information,
+and analytics data for the chatbot performance dashboard.
 """
 
 import json
@@ -142,6 +143,7 @@ class User(Base):
     
     # Relationships
     orders = relationship("Order", back_populates="user", cascade="all, delete-orphan")
+    chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
     
     def __init__(self, user_id, name=None, email=None, preferences=None, order_history=None):
         self.user_id = user_id if user_id else f"u{uuid.uuid4().hex[:8]}"
@@ -183,3 +185,199 @@ class User(Base):
             'preferences': preferences,
             'order_history': order_history
         }
+
+
+# Analytics Models
+
+class ChatSession(Base):
+    """
+    Represents a chat session between a user and the chatbot.
+    Each session contains multiple interactions.
+    """
+    __tablename__ = 'chat_sessions'
+    
+    id = Column(Integer, primary_key=True)
+    session_id = Column(String(100), unique=True, nullable=False)
+    user_id = Column(String(50), ForeignKey('users.user_id'), nullable=True)  # Nullable for anonymous users
+    start_time = Column(DateTime, default=datetime.utcnow)
+    end_time = Column(DateTime, nullable=True)
+    platform = Column(String(50), nullable=True)  # web, mobile, etc.
+    device_info = Column(String(255), nullable=True)
+    
+    # Relationships
+    user = relationship("User", back_populates="chat_sessions")
+    interactions = relationship("ChatInteraction", back_populates="session", cascade="all, delete-orphan")
+    
+    def __init__(self, session_id, user_id=None, platform=None, device_info=None):
+        self.session_id = session_id if session_id else f"s{uuid.uuid4().hex[:8]}"
+        self.user_id = user_id
+        self.platform = platform
+        self.device_info = device_info
+        self.start_time = datetime.utcnow()
+    
+    def end_session(self):
+        """Mark the session as ended."""
+        self.end_time = datetime.utcnow()
+    
+    def to_dict(self):
+        """Convert session to dictionary for API responses."""
+        duration = None
+        if self.end_time and self.start_time:
+            duration = (self.end_time - self.start_time).total_seconds()
+            
+        return {
+            'session_id': self.session_id,
+            'user_id': self.user_id,
+            'start_time': self.start_time.isoformat() if self.start_time else None,
+            'end_time': self.end_time.isoformat() if self.end_time else None,
+            'platform': self.platform,
+            'device_info': self.device_info,
+            'interaction_count': len(self.interactions) if hasattr(self, 'interactions') else 0,
+            'duration_seconds': duration
+        }
+
+
+class ChatInteraction(Base):
+    """
+    Represents a single interaction (message and response) in a chat session.
+    """
+    __tablename__ = 'chat_interactions'
+    
+    id = Column(Integer, primary_key=True)
+    session_id = Column(String(100), ForeignKey('chat_sessions.session_id'), nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    user_message = Column(Text, nullable=False)
+    chatbot_response = Column(Text, nullable=True)
+    detected_intent = Column(String(100), nullable=True)
+    confidence_score = Column(Float, nullable=True)
+    has_attachment = Column(Boolean, default=False)
+    attachment_type = Column(String(50), nullable=True)  # image, file, audio
+    response_time_ms = Column(Integer, nullable=True)  # Response time in milliseconds
+    products_shown = Column(Integer, default=0)  # Number of products shown in response
+    entities = Column(Text, nullable=True)  # JSON string of detected entities
+    sentiment_score = Column(Float, nullable=True)  # From -1 (negative) to 1 (positive)
+    was_successful = Column(Boolean, default=True)  # Whether the interaction was successful
+    error_type = Column(String(100), nullable=True)  # Type of error if unsuccessful
+    
+    # Relationships
+    session = relationship("ChatSession", back_populates="interactions")
+    
+    def __init__(self, session_id, user_message, chatbot_response=None, detected_intent=None, 
+                 confidence_score=None, has_attachment=False, attachment_type=None,
+                 response_time_ms=None, products_shown=0, entities=None, 
+                 sentiment_score=None, was_successful=True, error_type=None):
+        self.session_id = session_id
+        self.user_message = user_message
+        self.chatbot_response = chatbot_response
+        self.detected_intent = detected_intent
+        self.confidence_score = confidence_score
+        self.has_attachment = has_attachment
+        self.attachment_type = attachment_type
+        self.response_time_ms = response_time_ms
+        self.products_shown = products_shown
+        self.entities = json.dumps(entities) if entities else None
+        self.sentiment_score = sentiment_score
+        self.was_successful = was_successful
+        self.error_type = error_type
+        self.timestamp = datetime.utcnow()
+    
+    def to_dict(self):
+        """Convert interaction to dictionary for API responses."""
+        entities = {}
+        if self.entities:
+            try:
+                entities = json.loads(self.entities)
+            except:
+                pass
+                
+        return {
+            'id': self.id,
+            'session_id': self.session_id,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+            'user_message': self.user_message,
+            'chatbot_response': self.chatbot_response,
+            'detected_intent': self.detected_intent,
+            'confidence_score': self.confidence_score,
+            'has_attachment': self.has_attachment,
+            'attachment_type': self.attachment_type,
+            'response_time_ms': self.response_time_ms,
+            'products_shown': self.products_shown,
+            'entities': entities,
+            'sentiment_score': self.sentiment_score,
+            'was_successful': self.was_successful,
+            'error_type': self.error_type
+        }
+
+
+class AnalyticsSummary(Base):
+    """
+    Stores aggregated analytics data for reporting.
+    Summaries can be daily, weekly, or monthly.
+    """
+    __tablename__ = 'analytics_summaries'
+    
+    id = Column(Integer, primary_key=True)
+    date = Column(DateTime, nullable=False)
+    period_type = Column(String(10), nullable=False)  # daily, weekly, monthly
+    total_sessions = Column(Integer, default=0)
+    total_interactions = Column(Integer, default=0)
+    unique_users = Column(Integer, default=0)
+    avg_session_duration_seconds = Column(Float, nullable=True)
+    avg_response_time_ms = Column(Float, nullable=True)
+    
+    # Intent distribution (stored as JSON)
+    intent_distribution = Column(Text, nullable=True)
+    
+    # Product metrics
+    products_shown_count = Column(Integer, default=0)
+    product_search_count = Column(Integer, default=0)
+    
+    # Error metrics
+    error_count = Column(Integer, default=0)
+    error_distribution = Column(Text, nullable=True)  # JSON of error types
+    
+    # Session origin metrics
+    platform_distribution = Column(Text, nullable=True)  # JSON of platform counts
+    
+    def __init__(self, date, period_type):
+        self.date = date
+        self.period_type = period_type  # daily, weekly, monthly
+        
+    def set_intent_distribution(self, distribution):
+        """Set the intent distribution as a JSON string."""
+        self.intent_distribution = json.dumps(distribution)
+        
+    def get_intent_distribution(self):
+        """Get the intent distribution as a dictionary."""
+        if self.intent_distribution:
+            try:
+                return json.loads(self.intent_distribution)
+            except:
+                return {}
+        return {}
+        
+    def set_error_distribution(self, distribution):
+        """Set the error distribution as a JSON string."""
+        self.error_distribution = json.dumps(distribution)
+        
+    def get_error_distribution(self):
+        """Get the error distribution as a dictionary."""
+        if self.error_distribution:
+            try:
+                return json.loads(self.error_distribution)
+            except:
+                return {}
+        return {}
+        
+    def set_platform_distribution(self, distribution):
+        """Set the platform distribution as a JSON string."""
+        self.platform_distribution = json.dumps(distribution)
+        
+    def get_platform_distribution(self):
+        """Get the platform distribution as a dictionary."""
+        if self.platform_distribution:
+            try:
+                return json.loads(self.platform_distribution)
+            except:
+                return {}
+        return {}

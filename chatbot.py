@@ -9,6 +9,7 @@ import json
 import logging
 import random
 import base64
+import time
 import urllib.parse
 import google.generativeai as genai
 from database_service import (
@@ -17,6 +18,8 @@ from database_service import (
 )
 # Keep Firebase import for backwards compatibility
 import firebase_service
+# Import analytics service for tracking metrics
+import analytics_service
 
 # Helper function to encode URI components
 def encodeURIComponent(string):
