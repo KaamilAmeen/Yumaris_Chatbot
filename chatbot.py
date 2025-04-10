@@ -8,6 +8,7 @@ import os
 import json
 import logging
 import random
+import base64
 import google.generativeai as genai
 from database_service import (
     get_products, get_product_by_id, get_order_by_id,
@@ -284,6 +285,192 @@ def generate_general_response(message, intent_info):
         return {
             "message": "I'm here to help with your shopping needs. Could you please provide more details about what you're looking for?",
             "data": None
+        }
+
+def analyze_image(image_path):
+    """
+    Use Gemini's vision capabilities to analyze an image.
+    Returns product information, description, and other details.
+    """
+    try:
+        # Read the image file
+        with open(image_path, 'rb') as f:
+            image_bytes = f.read()
+        
+        # Encode image as base64
+        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+        
+        # Create multimodal content with image
+        model = genai.GenerativeModel(model_name="models/gemini-1.5-pro")
+        
+        # Format prompt for product analysis
+        prompt = """
+        Analyze this product image in detail and provide the following information in JSON format:
+        - Product name/type
+        - Brief description (3-4 sentences)
+        - Key features (list 3-5 main features)
+        - Estimated price range
+        - Recommended uses
+        - Product category
+        
+        For retail products, focus on specifications, materials, and potential uses.
+        For technology products, focus on technical specifications and capabilities.
+        
+        Format your response as a valid JSON object with these fields:
+        {
+          "product_name": "Name of product",
+          "description": "Detailed product description",
+          "features": ["feature 1", "feature 2", "feature 3"],
+          "price_range": "$XX - $XX",
+          "category": "Product category",
+          "recommended_uses": ["use 1", "use 2"]
+        }
+        
+        Return ONLY the JSON, nothing else.
+        """
+        
+        # Generate content with image
+        response = model.generate_content(
+            contents=[
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": prompt},
+                        {"inline_data": {"mime_type": "image/jpeg", "data": image_base64}}
+                    ]
+                }
+            ]
+        )
+        
+        # Extract JSON response
+        if hasattr(response, 'text'):
+            # Parse the JSON results
+            try:
+                result = json.loads(response.text)
+                logger.debug(f"Image analysis result: {result}")
+                return result
+            except json.JSONDecodeError:
+                # If not valid JSON, try to extract JSON from the text
+                import re
+                json_match = re.search(r'({[\s\S]*})', response.text)
+                if json_match:
+                    try:
+                        result = json.loads(json_match.group(1))
+                        logger.debug(f"Extracted image analysis result: {result}")
+                        return result
+                    except json.JSONDecodeError:
+                        logger.error("Failed to parse extracted JSON")
+                        return None
+                logger.error("Failed to extract JSON from response")
+                return None
+        else:
+            # Handle case where response is already parsed
+            parts = response.candidates[0].content.parts
+            try:
+                result = json.loads(parts[0].text)
+                logger.debug(f"Image analysis result: {result}")
+                return result
+            except json.JSONDecodeError:
+                logger.error("Failed to parse JSON from response parts")
+                return None
+    
+    except Exception as e:
+        logger.error(f"Error analyzing image: {str(e)}", exc_info=True)
+        return None
+
+def get_similar_products(product_info, limit=3):
+    """
+    Find similar products based on the analyzed product information.
+    """
+    if not product_info:
+        return []
+    
+    # Extract relevant fields for search
+    product_name = product_info.get('product_name', '')
+    category = product_info.get('category', '')
+    
+    # Search for similar products
+    if product_name and category:
+        query = f"{product_name} {category}"
+        products = search_products(query, limit=limit)
+    elif product_name:
+        products = search_products(product_name, limit=limit)
+    elif category:
+        products = search_products(category, limit=limit)
+    else:
+        # If no useful info, return trending products
+        products = get_trending_products(limit=limit)
+    
+    return products
+
+def process_image_message(message, image_path, session_id):
+    """
+    Process a user message with an attached image.
+    Analyzes the image, extracts product information, and finds similar products.
+    """
+    try:
+        # Add message to chat history
+        if session_id not in chat_histories:
+            chat_histories[session_id] = []
+        
+        # Add user message with image indicator
+        chat_histories[session_id].append({"role": "user", "message": message, "has_image": True})
+        
+        # Analyze the image
+        product_info = analyze_image(image_path)
+        
+        if not product_info:
+            response = {
+                "message": "I couldn't analyze this image properly. Could you please try a clearer image or describe what you're looking for?",
+                "data": None
+            }
+        else:
+            # Find similar products
+            similar_products = get_similar_products(product_info)
+            formatted_products = [format_product_for_display(p) for p in similar_products] if similar_products else []
+            
+            # Create detailed response about the image and similar products
+            product_name = product_info.get('product_name', 'product')
+            category = product_info.get('category', 'item')
+            price_range = product_info.get('price_range', '')
+            description = product_info.get('description', '')
+            features = product_info.get('features', [])
+            
+            # Format features as bullet points
+            features_text = "\n• " + "\n• ".join(features) if features else ""
+            
+            # Construct the response
+            if similar_products:
+                message_text = f"This appears to be a {product_name} in the {category} category.\n\n{description}\n\nKey features:{features_text}\n\nEstimated price range: {price_range}\n\nI found some similar products that might interest you:"
+                response = {
+                    "message": message_text,
+                    "data": {"products": formatted_products, "analyzed_product": product_info}
+                }
+            else:
+                message_text = f"This appears to be a {product_name} in the {category} category.\n\n{description}\n\nKey features:{features_text}\n\nEstimated price range: {price_range}\n\nI don't have any similar products in stock at the moment. Would you like me to help you find something else?"
+                response = {
+                    "message": message_text,
+                    "data": {"analyzed_product": product_info}
+                }
+        
+        # Add response to chat history
+        chat_histories[session_id].append({
+            "role": "assistant", 
+            "message": response["message"],
+            "data": response.get("data")
+        })
+        
+        # Limit chat history size
+        if len(chat_histories[session_id]) > 20:
+            chat_histories[session_id] = chat_histories[session_id][-20:]
+        
+        return response
+    
+    except Exception as e:
+        logger.error(f"Error processing image message: {str(e)}", exc_info=True)
+        return {
+            "message": "I'm sorry, I encountered an error analyzing this image. Please try again or describe the product you're looking for.",
+            "error": str(e)
         }
 
 def process_user_message(message, session_id):
