@@ -70,10 +70,14 @@ def detect_intent(message):
             "temperature": 0.2,
             "top_p": 0.8,
             "top_k": 40,
-            "response_mime_type": "application/json",
         }
         
-        model = genai.GenerativeModel('gemini-pro', generation_config=generation_config)
+        # List available models to use the correct format
+        models = genai.list_models()
+        logger.debug(f"Available models: {[model.name for model in models]}")
+        
+        # Use the first available model that supports text generation
+        model = genai.GenerativeModel(model_name="models/gemini-1.5-pro", generation_config=generation_config)
         response = model.generate_content(prompt)
         
         if hasattr(response, 'text'):
@@ -260,7 +264,7 @@ def generate_general_response(message, intent_info):
         Do not fabricate specific product information or prices.
         """
         
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel(model_name="models/gemini-1.5-pro")
         response = model.generate_content(prompt)
         
         if hasattr(response, 'text'):

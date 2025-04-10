@@ -2,6 +2,7 @@ import os
 import logging
 from flask import Flask, render_template, request, jsonify, session
 from werkzeug.middleware.proxy_fix import ProxyFix
+from database_service import init_db, close_db_session
 from firebase_service import initialize_firebase
 from chatbot import process_user_message
 
@@ -10,12 +11,20 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev_secret_key")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Initialize Firebase
+# Initialize Database
+init_db()
+
+# Initialize Firebase (for backward compatibility)
 initialize_firebase()
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Clean up database session when app shuts down
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    close_db_session()
 
 @app.route('/')
 def index():
