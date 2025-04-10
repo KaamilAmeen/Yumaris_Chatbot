@@ -9,10 +9,12 @@ import json
 import logging
 import random
 import google.generativeai as genai
-from firebase_service import (
+from database_service import (
     get_products, get_product_by_id, get_order_by_id,
     search_products, get_trending_products
 )
+# Keep Firebase import for backwards compatibility
+import firebase_service
 
 # Set up logging
 logger = logging.getLogger(__name__)

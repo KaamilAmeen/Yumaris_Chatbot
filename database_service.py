@@ -182,12 +182,13 @@ def search_products(query, limit=5):
         session = db_session()
         
         # Search using SQLAlchemy's like operator
-        query = f"%{query.lower()}%"
+        search_query = f"%{query.lower()}%"
+        from sqlalchemy import or_, func
         products = session.query(Product).filter(
-            db.or_(
-                db.func.lower(Product.name).like(query),
-                db.func.lower(Product.description).like(query),
-                db.func.lower(Product.category).like(query)
+            or_(
+                func.lower(Product.name).like(search_query),
+                func.lower(Product.description).like(search_query),
+                func.lower(Product.category).like(search_query)
             )
         ).limit(limit).all()
         
@@ -202,7 +203,7 @@ def search_products(query, limit=5):
             all_products = session.query(Product).all()
             
             results = []
-            query_text = query.replace("%", "").lower()
+            query_text = query.lower()
             
             for product in all_products:
                 if (query_text in product.name.lower() or 
