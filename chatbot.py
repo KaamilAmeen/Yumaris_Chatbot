@@ -9,6 +9,7 @@ import json
 import logging
 import random
 import base64
+import urllib.parse
 import google.generativeai as genai
 from database_service import (
     get_products, get_product_by_id, get_order_by_id,
@@ -16,6 +17,14 @@ from database_service import (
 )
 # Keep Firebase import for backwards compatibility
 import firebase_service
+
+# Helper function to encode URI components
+def encodeURIComponent(string):
+    """
+    Encode a string for inclusion in a URL query parameter.
+    Similar to JavaScript's encodeURIComponent
+    """
+    return urllib.parse.quote(string, safe='')
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -435,22 +444,80 @@ def process_image_message(message, image_path, session_id):
             price_range = product_info.get('price_range', '')
             description = product_info.get('description', '')
             features = product_info.get('features', [])
+            recommended_uses = product_info.get('recommended_uses', [])
             
             # Format features as bullet points
             features_text = "\n• " + "\n• ".join(features) if features else ""
             
+            # Format uses as bullet points if available
+            uses_text = ""
+            if recommended_uses:
+                uses_text = "\n\nRecommended uses:" 
+                uses_text += "\n• " + "\n• ".join(recommended_uses)
+            
+            # Extract a potential price value from the price range
+            price_value = None
+            if price_range:
+                import re
+                price_match = re.search(r'\$(\d+(?:\.\d{1,2})?)', price_range)
+                if price_match:
+                    price_value = float(price_match.group(1))
+            
+            # Create a product object that can be displayed properly
+            analyzed_product_display = {
+                "id": "analyzed-product",
+                "name": product_name,
+                "description": description,
+                "price": price_range,
+                "category": category,
+                "image_url": None,  # We don't have an image URL for the analyzed product
+                "in_stock": "Not Available",
+                "features": features,
+                "recommended_uses": recommended_uses
+            }
+            
+            if price_value:
+                analyzed_product_display["price"] = f"${price_value:.2f}"
+            
+            # Prepare search link for Amazon
+            search_query = encodeURIComponent(product_name)
+            amazon_url = f"https://www.amazon.com/s?k={search_query}"
+            
             # Construct the response
             if similar_products:
-                message_text = f"This appears to be a {product_name} in the {category} category.\n\n{description}\n\nKey features:{features_text}\n\nEstimated price range: {price_range}\n\nI found some similar products that might interest you:"
+                message_text = f"## Product Analysis: {product_name}\n\n"
+                message_text += f"**Category:** {category}\n"
+                message_text += f"**Price Range:** {price_range}\n\n"
+                message_text += f"{description}\n\n"
+                message_text += f"**Key Features:**{features_text}"
+                message_text += uses_text
+                message_text += f"\n\n[View on Amazon]({amazon_url})\n\n"
+                message_text += "I found some similar products in our catalog that might interest you:"
+                
                 response = {
                     "message": message_text,
-                    "data": {"products": formatted_products, "analyzed_product": product_info}
+                    "data": {
+                        "products": formatted_products, 
+                        "analyzed_product": product_info,
+                        "amazon_url": amazon_url
+                    }
                 }
             else:
-                message_text = f"This appears to be a {product_name} in the {category} category.\n\n{description}\n\nKey features:{features_text}\n\nEstimated price range: {price_range}\n\nI don't have any similar products in stock at the moment. Would you like me to help you find something else?"
+                message_text = f"## Product Analysis: {product_name}\n\n"
+                message_text += f"**Category:** {category}\n"
+                message_text += f"**Price Range:** {price_range}\n\n"
+                message_text += f"{description}\n\n"
+                message_text += f"**Key Features:**{features_text}"
+                message_text += uses_text
+                message_text += f"\n\n[View on Amazon]({amazon_url})\n\n"
+                message_text += "I don't have any similar products in our catalog at the moment. Would you like me to help you find something else?"
+                
                 response = {
                     "message": message_text,
-                    "data": {"analyzed_product": product_info}
+                    "data": {
+                        "analyzed_product": product_info,
+                        "amazon_url": amazon_url
+                    }
                 }
         
         # Add response to chat history

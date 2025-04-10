@@ -235,17 +235,36 @@ function displayProducts(products) {
         // Handle product image with fallback
         const imageUrl = product.image_url || 'https://via.placeholder.com/150x150?text=No+Image';
         
+        // Get current price from price display (removing any HTML tags and symbols)
+        const currentPrice = extractCurrentPrice(product.price);
+        const priceLabel = `$${currentPrice}`;
+        
+        // Additional product details
+        const productDetails = getProductDetails(product);
+        
         productCard.innerHTML = `
-            <div class="card h-100 product-card">
-                <div class="text-center p-2 bg-light">
-                    <img src="${imageUrl}" alt="${product.name}" class="img-fluid product-img" style="max-height: 150px; object-fit: contain;">
+            <div class="card h-100 product-card shadow">
+                <div class="position-relative">
+                    <div class="text-center p-2 bg-light product-image-container">
+                        <img src="${imageUrl}" alt="${product.name}" class="img-fluid product-img" style="height: 180px; object-fit: contain;">
+                    </div>
+                    <div class="position-absolute top-0 end-0 p-2">
+                        <span class="badge ${product.in_stock === 'In Stock' ? 'bg-success' : 'bg-danger'} fs-6">${product.in_stock}</span>
+                    </div>
+                    <div class="position-absolute bottom-0 start-0 p-2">
+                        <div class="bg-dark bg-opacity-75 text-white px-2 py-1 rounded price-tag">
+                            <span class="fs-5 fw-bold">${priceLabel}</span>
+                        </div>
+                    </div>
                 </div>
                 <div class="card-body">
-                    <h5 class="card-title">${product.name}</h5>
+                    <h5 class="card-title fw-bold">${product.name}</h5>
                     <p class="card-text small">${product.description.substring(0, 100)}${product.description.length > 100 ? '...' : ''}</p>
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         ${priceDisplay}
-                        <span class="badge ${product.in_stock === 'In Stock' ? 'bg-success' : 'bg-danger'}">${product.in_stock}</span>
+                    </div>
+                    <div class="product-details small">
+                        ${productDetails}
                     </div>
                 </div>
                 <div class="card-footer d-flex">
@@ -277,6 +296,56 @@ function displayProducts(products) {
     
     // Scroll to see products
     productCarouselContainer.scrollIntoView({ behavior: 'smooth' });
+}
+
+/**
+ * Extract numeric price from price string
+ */
+function extractCurrentPrice(priceString) {
+    // Remove $ symbol and any other non-numeric characters except decimal point
+    if (typeof priceString === 'string') {
+        const numericString = priceString.replace(/[^0-9.]/g, '');
+        return parseFloat(numericString).toFixed(2);
+    } else if (typeof priceString === 'number') {
+        return priceString.toFixed(2);
+    }
+    
+    return "0.00";
+}
+
+/**
+ * Get formatted product details
+ */
+function getProductDetails(product) {
+    let details = '';
+    
+    // Add category
+    if (product.category) {
+        details += `<div><i class="fas fa-tag me-1 text-secondary"></i> ${product.category}</div>`;
+    }
+    
+    // Add model/type if available
+    if (product.model) {
+        details += `<div><i class="fas fa-cube me-1 text-secondary"></i> ${product.model}</div>`;
+    }
+    
+    // Add brand if available
+    if (product.brand) {
+        details += `<div><i class="fas fa-trademark me-1 text-secondary"></i> ${product.brand}</div>`;
+    }
+    
+    // Add rating if available
+    if (product.rating) {
+        const stars = '★'.repeat(Math.floor(product.rating)) + '☆'.repeat(5 - Math.floor(product.rating));
+        details += `<div><i class="fas fa-star me-1 text-warning"></i> ${stars} (${product.rating})</div>`;
+    }
+    
+    // Add warranty if available
+    if (product.warranty) {
+        details += `<div><i class="fas fa-shield-alt me-1 text-secondary"></i> ${product.warranty}</div>`;
+    }
+    
+    return details || '<div class="text-muted">No additional details available</div>';
 }
 
 /**
