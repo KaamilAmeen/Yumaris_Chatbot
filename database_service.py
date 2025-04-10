@@ -17,14 +17,24 @@ logger = logging.getLogger(__name__)
 engine = create_engine(os.environ.get("DATABASE_URL"))
 db_session = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
 
-def init_db():
-    """Initialize the database, creating tables if they don't exist."""
+def init_db(force_recreate=False):
+    """Initialize the database, creating or recreating tables."""
     try:
+        # Optionally drop all tables first to start with a clean database
+        if force_recreate:
+            logger.info("Force recreating database tables...")
+            Base.metadata.drop_all(bind=engine)
+        
         # Create all tables
         Base.metadata.create_all(bind=engine)
         
-        # Check if we need to add sample data
-        if db_session().query(Product).count() == 0:
+        # Add sample data if tables are empty
+        session = db_session()
+        product_count = session.query(Product).count()
+        session.close()
+        
+        if product_count == 0 or force_recreate:
+            logger.info("Adding sample data to database...")
             add_sample_data()
         
         return True
@@ -38,7 +48,7 @@ def add_sample_data():
     try:
         session = db_session()
         
-        # Sample products
+        # Sample products with real image URLs
         sample_products = [
             Product(
                 product_id="p1",
@@ -46,7 +56,7 @@ def add_sample_data():
                 description="Premium noise-cancelling headphones with 20-hour battery life and comfortable over-ear design.",
                 price=99.99,
                 category="Electronics",
-                image_url="https://via.placeholder.com/150",
+                image_url="https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=600&auto=format&fit=crop",
                 in_stock=True
             ),
             Product(
@@ -55,7 +65,7 @@ def add_sample_data():
                 description="Vacuum insulated water bottle that keeps drinks cold for 24 hours or hot for 12 hours.",
                 price=24.99,
                 category="Home & Kitchen",
-                image_url="https://via.placeholder.com/150",
+                image_url="https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=600&auto=format&fit=crop",
                 in_stock=True
             ),
             Product(
@@ -64,7 +74,7 @@ def add_sample_data():
                 description="Soft, breathable cotton t-shirt made with 100% organic materials and sustainable practices.",
                 price=29.99,
                 category="Clothing",
-                image_url="https://via.placeholder.com/150",
+                image_url="https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600&auto=format&fit=crop",
                 in_stock=True
             ),
             Product(
@@ -73,7 +83,7 @@ def add_sample_data():
                 description="WiFi-enabled LED bulbs with adjustable brightness and color, compatible with voice assistants.",
                 price=49.99,
                 category="Smart Home",
-                image_url="https://via.placeholder.com/150",
+                image_url="https://images.unsplash.com/photo-1550985616-10810253b84d?w=600&auto=format&fit=crop",
                 in_stock=True
             ),
             Product(
@@ -82,7 +92,7 @@ def add_sample_data():
                 description="Vegan protein powder with 25g of protein per serving and no artificial ingredients.",
                 price=34.99,
                 category="Health & Wellness",
-                image_url="https://via.placeholder.com/150",
+                image_url="https://images.unsplash.com/photo-1579722821273-0f6c1b92ae2f?w=600&auto=format&fit=crop",
                 in_stock=True
             )
         ]

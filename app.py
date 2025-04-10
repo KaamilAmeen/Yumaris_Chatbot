@@ -11,8 +11,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev_secret_key")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Initialize Database
-init_db()
+# Initialize Database (force recreate to ensure we have updated sample data with image URLs)
+init_db(force_recreate=True)
 
 # Initialize Firebase (for backward compatibility)
 initialize_firebase()
