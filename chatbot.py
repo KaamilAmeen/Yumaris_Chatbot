@@ -415,11 +415,18 @@ def get_similar_products(product_info, limit=3):
     
     return products
 
-def process_image_message(message, image_path, session_id):
+def process_image_message(message, image_path, session_id, user_id=None, platform="web"):
     """
     Process a user message with an attached image.
     Analyzes the image, extracts product information, and finds similar products.
+    Also tracks analytics data for the interaction.
     """
+    start_time = time.time()
+    was_successful = True
+    error_type = None
+    
+    # Ensure session exists in analytics database
+    analytics_service.create_chat_session(session_id, user_id, platform)
     try:
         # Add message to chat history
         if session_id not in chat_histories:
@@ -534,20 +541,86 @@ def process_image_message(message, image_path, session_id):
         if len(chat_histories[session_id]) > 20:
             chat_histories[session_id] = chat_histories[session_id][-20:]
         
+        # Calculate response time in milliseconds
+        response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Count products shown
+        products_shown = 0
+        if response.get("data") and "products" in response["data"]:
+            products_shown = len(response["data"]["products"])
+        
+        # Extract entities for analytics
+        entities = {}
+        if product_info:
+            entities = {
+                "product": product_info.get('product_name'),
+                "category": product_info.get('category')
+            }
+        
+        # Record in analytics
+        analytics_service.record_chat_interaction(
+            session_id=session_id,
+            user_message=message,
+            chatbot_response=response["message"],
+            detected_intent="IMAGE_ANALYSIS",
+            has_attachment=True,
+            attachment_type="image",
+            response_time_ms=response_time_ms,
+            products_shown=products_shown,
+            entities=entities,
+            was_successful=True
+        )
+        
         return response
     
     except Exception as e:
+        # Mark as unsuccessful for analytics
+        was_successful = False
+        error_type = type(e).__name__
+        
+        # Calculate response time even for errors
+        response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Log the error
         logger.error(f"Error processing image message: {str(e)}", exc_info=True)
-        return {
+        
+        # Create error response
+        error_response = {
             "message": "I'm sorry, I encountered an error analyzing this image. Please try again or describe the product you're looking for.",
             "error": str(e)
         }
+        
+        # Record error interaction in analytics
+        try:
+            analytics_service.record_chat_interaction(
+                session_id=session_id,
+                user_message=message,
+                chatbot_response=error_response["message"],
+                detected_intent="IMAGE_ANALYSIS",
+                has_attachment=True,
+                attachment_type="image",
+                response_time_ms=response_time_ms,
+                was_successful=False,
+                error_type=error_type
+            )
+        except Exception as analytics_error:
+            logger.error(f"Error recording analytics: {str(analytics_error)}", exc_info=True)
+            
+        return error_response
 
-def process_user_message(message, session_id):
+def process_user_message(message, session_id, user_id=None, platform="web"):
     """
     Process a user message, detect intent, and generate an appropriate response.
+    Also tracks analytics data for the interaction.
     """
+    start_time = time.time()
+    was_successful = True
+    error_type = None
+    
     try:
+        # Ensure session exists in analytics database
+        analytics_service.create_chat_session(session_id, user_id, platform)
+        
         # Add message to chat history
         if session_id not in chat_histories:
             chat_histories[session_id] = []
@@ -557,6 +630,7 @@ def process_user_message(message, session_id):
         # Detect the intent of the message
         intent_info = detect_intent(message)
         intent = intent_info.get("intent", "GENERAL_QUESTION")
+        confidence = intent_info.get("confidence", 0.5)
         entities = intent_info.get("entities", {})
         
         # Handle different intents
@@ -597,11 +671,61 @@ def process_user_message(message, session_id):
         if len(chat_histories[session_id]) > 20:
             chat_histories[session_id] = chat_histories[session_id][-20:]
         
+        # Calculate response time (ms)
+        response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Count number of products shown
+        products_shown = 0
+        if response.get("data") and "products" in response["data"]:
+            products_shown = len(response["data"]["products"])
+        elif response.get("data") and "product" in response["data"]:
+            products_shown = 1
+            
+        # Record interaction in analytics database
+        analytics_service.record_chat_interaction(
+            session_id=session_id,
+            user_message=message,
+            chatbot_response=response["message"],
+            detected_intent=intent,
+            confidence_score=confidence,
+            response_time_ms=response_time_ms,
+            products_shown=products_shown,
+            entities=entities,
+            was_successful=True
+        )
+        
         return response
     
     except Exception as e:
+        # Mark as unsuccessful for analytics
+        was_successful = False
+        error_type = type(e).__name__
+        
+        # Calculate response time even for errors
+        response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Log the error
         logger.error(f"Error processing message: {str(e)}", exc_info=True)
-        return {
+        
+        # Create error response
+        error_response = {
             "message": "I'm sorry, I encountered an error while processing your message. Please try again.",
             "error": str(e)
         }
+        
+        # Record error interaction in analytics
+        try:
+            analytics_service.record_chat_interaction(
+                session_id=session_id,
+                user_message=message,
+                chatbot_response=error_response["message"],
+                detected_intent=intent if 'intent' in locals() else "UNKNOWN",
+                confidence_score=confidence if 'confidence' in locals() else None,
+                response_time_ms=response_time_ms,
+                was_successful=False,
+                error_type=error_type
+            )
+        except Exception as analytics_error:
+            logger.error(f"Error recording analytics: {str(analytics_error)}", exc_info=True)
+            
+        return error_response
