@@ -1,10 +1,12 @@
 import os
 import logging
-from flask import Flask, render_template, request, jsonify, session
+import datetime
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 from database_service import init_db, close_db_session
 from firebase_service import initialize_firebase
-from chatbot import process_user_message
+from chatbot import process_user_message, process_image_message
+import analytics_service
 
 # Create the Flask app
 app = Flask(__name__)
